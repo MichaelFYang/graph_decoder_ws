@@ -1,0 +1,4 @@
+# Graph Decoder Default Params
+world_frame                             : /map
+visual_scale_ratio                      : 0.75 
+file_name                               : /home/fan-robot/graph_decoder_ws/data/graph.txt
