@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <unordered_map>
 #include <nav_graph_msg/Graph.h>
 #include <nav_graph_msg/Node.h>
 #include <std_srvs/Trigger.h>
@@ -85,8 +86,6 @@ private:
     bool ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
     void VisualizeGraph();
-    
-    NavNodePtr NodeFromNodeId(const std::size_t& id, const NodePtrStack& graph);
 
     inline void ResetGraph() {
         graph_nodes_.clear();
@@ -111,10 +110,12 @@ private:
         node_ptr->connect_nodes.clear();
     }
 
-    inline void AddNodePtrToGraph(const NavNodePtr& node_ptr) {
+    inline bool AddNodePtrToGraph(const NavNodePtr& node_ptr) {
         if (node_ptr != NULL) {
             graph_nodes_.push_back(node_ptr);
+            return true;
         }
+        return false;
     }
     
 };

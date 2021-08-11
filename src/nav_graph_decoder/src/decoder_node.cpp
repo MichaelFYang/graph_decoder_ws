@@ -29,19 +29,25 @@ void GraphDecoder::GraphCallBack(const nav_graph_msg::GraphConstPtr& msg) {
     shared_graph_ = *msg;
     this->ResetGraph();
     NavNodePtr temp_node_ptr = NULL;
-    for (const auto& node : shared_graph_.nodes) { // create graph nodes
+    std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
+    for (std::size_t i=0; i<shared_graph_.nodes.size(); i++) {
+        const auto node = shared_graph_.nodes[i];
         CreateNavNode(node.position, node.id, temp_node_ptr);
         for (const auto& cid : node.connect_nodes) {
             temp_node_ptr->connect_idxs.push_back((std::size_t)cid);
         }
-        AddNodePtrToGraph(temp_node_ptr);
+        if (AddNodePtrToGraph(temp_node_ptr)) {
+            nodeIdx_idx_map.insert({node.id, i});
+        }
     }
     for (const auto& node_ptr : graph_nodes_) { // add connections to nodes
         std::vector<std::size_t> clean_idx;
         clean_idx.clear();
         for (const auto& cid : node_ptr->connect_idxs) {
-            const NavNodePtr cnode_ptr = NodeFromNodeId(cid, graph_nodes_);
-            if (cnode_ptr != NULL) {
+            const auto it = nodeIdx_idx_map.find(cid);
+            if (it != nodeIdx_idx_map.end()) {
+                const std::size_t idx = nodeIdx_idx_map.find(cid)->second;
+                const NavNodePtr cnode_ptr = graph_nodes_[idx];
                 node_ptr->connect_nodes.push_back(cnode_ptr);
                 clean_idx.push_back(cnode_ptr->id);
             }
@@ -50,15 +56,6 @@ void GraphDecoder::GraphCallBack(const nav_graph_msg::GraphConstPtr& msg) {
     }
     ROS_INFO("Graph extraction completed.");
     this->VisualizeGraph();
-}
-
-NavNodePtr GraphDecoder::NodeFromNodeId(const std::size_t& id, const NodePtrStack& graph) {
-    std::size_t idx = 0;
-    NavNodePtr node_ptr = NULL;
-    for (; idx<graph.size(); idx++) {
-        if (graph[idx]->id == id) break;
-    }
-    return graph[idx];
 }
 
 void GraphDecoder::LoadParmas() {
@@ -144,6 +141,8 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
     this->ResetGraph();
     std::string str;
     std::string delimiter = " ";
+    std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
+    std::size_t ic = 0;
     while (std::getline(graph_file, str)) {
         std::vector<std::string> components;
         geometry_msgs::Point p;
@@ -169,14 +168,19 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
         }
         CreateNavNode(p, id, temp_node_ptr);
         temp_node_ptr->connect_idxs = connect_idxs;
-        AddNodePtrToGraph(temp_node_ptr);
+        if (AddNodePtrToGraph(temp_node_ptr)) { 
+            nodeIdx_idx_map.insert({id, ic});
+            ic ++;
+        }
     }
     for (const auto& node_ptr : graph_nodes_) { // add connections to nodes
         std::vector<std::size_t> clean_idx;
         clean_idx.clear();
         for (const auto& cid : node_ptr->connect_idxs) {
-            const NavNodePtr cnode_ptr = NodeFromNodeId(cid, graph_nodes_);
-            if (cnode_ptr != NULL) {
+            const auto it = nodeIdx_idx_map.find(cid);
+            if (it != nodeIdx_idx_map.end()) {
+                const std::size_t idx = nodeIdx_idx_map.find(cid)->second;
+                const NavNodePtr cnode_ptr = graph_nodes_[idx];
                 node_ptr->connect_nodes.push_back(cnode_ptr);
                 clean_idx.push_back(cnode_ptr->id);
             }

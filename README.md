@@ -26,7 +26,7 @@ roslaunch graph_decoder decoder.launch
 1. Publish your graph into ROS topic "/planner_nav_graph"
 2. Read graph file from path listed in config file in nav_graph_decoder package by calling ROS service
 
-Note: You need to change graph file path in "graph_decoder_ws/src/nav_graph_decoder/config/default.yaml"
+Note: You need to select the graph file and change file path in "graph_decoder_ws/src/nav_graph_decoder/config/default.yaml"
 ```bash
 rosservice call /read_graph_service "{}"
 ```
