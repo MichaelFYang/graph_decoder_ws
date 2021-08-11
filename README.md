@@ -6,7 +6,7 @@ This README would normally document whatever steps are necessary to get your app
 
 Navigation Graph Decoder
 
-## How to get the graph decoeder runing on your workspace 
+## How to get the graph decoeder running on your workspace 
 
 #### Copy this planner workspace
 ```bash
@@ -22,23 +22,26 @@ roslaunch graph_decoder decoder.launch
 ```
 
 #### Instruction of how this graph decoder works
-##### There are two way to input(update) graph into the decoder
+##### There are two ways to input (update) graph into the decoder
 1. Publish your graph into ROS topic "/planner_nav_graph"
 2. Read graph file from path listed in config file in nav_graph_decoder package by calling ROS service
 ```bash
-    rosservice call /read_graph_service "{}"
+rosservice call /read_graph_service "{}"
 ```
 ##### How to save graph into a graph file
 1. Indicate in nav_graph_decoder package config file that the file path you want to save the file
 ```bash
-    vim <<YOUR WORKSPACE>>/src/nav_graph_decoder/config/default.ymal
+vim <<YOUR WORKSPACE>>/src/nav_graph_decoder/config/default.yaml
 ```
 2. Call a ROS service to save your current graph into a file
 ```bash
-    rosservice call /save_graph_service "{}"
+rosservice call /save_graph_service "{}"
 ```
 
-## Who do I talk to? 
+#### Graph File Format
+idx position.x position.y position.z \[connection idxs\]
+
+## Who could I talk to? 
 
 Fan Yang
 (fanyang2@alumni.cmu.edu)
