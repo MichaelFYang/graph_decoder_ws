@@ -16,6 +16,12 @@ catkin build
 source devel/setup.bash
 ```
 
+#### Before launch the decoder, make sure you have the file path correct
+Open the config file as the way you like
+``` bash
+gedit <<YOUR WORKSPACE>>/src/graph_decoder/config/default.yaml 
+```
+
 #### Launch the graph decoder
 ```bash
 roslaunch graph_decoder decoder.launch
@@ -31,11 +37,7 @@ Note: You need to select the graph file and change file path in "graph_decoder_w
 rosservice call /read_graph_service "{}"
 ```
 ##### How to save graph into a graph file
-1. Indicate in nav_graph_decoder package config file that the file path you want to save the file
-```bash
-vim <<YOUR WORKSPACE>>/src/nav_graph_decoder/config/default.yaml
-```
-2. Call a ROS service to save your current graph into a file
+Call a ROS service to save your current graph into a file
 ```bash
 rosservice call /save_graph_service "{}"
 ```
