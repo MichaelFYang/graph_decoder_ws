@@ -6,16 +6,20 @@
 #include <fstream>
 #include <vector>
 #include <unordered_map>
-#include <nav_graph_msg/Graph.h>
-#include <nav_graph_msg/Node.h>
+#include <visibility_graph_msg/Graph.h>
+#include <visibility_graph_msg/Node.h>
 #include <std_srvs/Trigger.h>
 #include <geometry_msgs/Point.h>
 
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
+#include "graph_decoder/point_struct.h"
+
 typedef visualization_msgs::Marker Marker;
 typedef visualization_msgs::MarkerArray MarkerArray;
+
+typedef std::pair<Point3D, Point3D> PointPair;
 
 enum VizColor {
     RED = 0,
@@ -30,12 +34,29 @@ enum VizColor {
     PURPLE = 9
 };
 
+enum NodeFreeDirect {
+  UNKNOW  =  0,
+  CONVEX  =  1,
+  CONCAVE =  2,
+  PILLAR  =  3
+};
+
 struct NavNode {
     NavNode() = default;
     std::size_t id;
-    geometry_msgs::Point position;
+    Point3D position;
+    NodeFreeDirect free_direct;
+    PointPair surf_dirs;
+    bool is_frontier;
+    bool is_navpoint;
     std::vector<std::size_t> connect_idxs;
     std::vector<std::shared_ptr<NavNode>> connect_nodes;
+
+    std::vector<std::size_t> contour_idxs;
+    std::vector<std::shared_ptr<NavNode>> contour_connects;
+
+    std::vector<std::size_t> traj_idxs;
+    std::vector<std::shared_ptr<NavNode>> traj_connects;
 };
 
 typedef std::shared_ptr<NavNode> NavNodePtr;
@@ -64,9 +85,8 @@ private:
     GraphDecoderParams gd_params_;
     NodePtrStack graph_nodes_;
     MarkerArray graph_marker_array_;
-    Marker node_marker_, edge_marker_;
 
-    nav_graph_msg::Graph shared_graph_;
+    visibility_graph_msg::Graph shared_graph_;
 
     void LoadParmas();
 
@@ -79,7 +99,7 @@ private:
     
     void SetColor(const VizColor& color, const float alpha, Marker& scan_marker);
 
-    void GraphCallBack(const nav_graph_msg::GraphConstPtr& msg);
+    void GraphCallBack(const visibility_graph_msg::GraphConstPtr& msg);
 
     bool SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
@@ -87,27 +107,34 @@ private:
 
     void VisualizeGraph();
 
+    void CreateNavNode(std::string str, NavNodePtr& node_ptr);
+
+    void CreateNavNode(const visibility_graph_msg::Node& msg, NavNodePtr& node_ptr);
+
+    void AssignConnectNodes(const std::unordered_map<std::size_t, std::size_t>& idxs_map,
+                            const NodePtrStack& graph,
+                            std::vector<std::size_t>& node_idxs,
+                            std::vector<NavNodePtr>& connects);
+
+    template <typename Point>
+    geometry_msgs::Point inline ToGeoMsgP(const Point& p) {
+        geometry_msgs::Point geo_p;
+        geo_p.x = p.x;
+        geo_p.y = p.y; 
+        geo_p.z = p.z;
+        return geo_p;
+    }
+
+    template <typename T>
+    bool IsTypeInStack(const T& elem, const std::vector<T>& T_stack) {
+        if (std::find(T_stack.begin(), T_stack.end(), elem) != T_stack.end()) {
+            return true;
+        }
+        return false;
+    }
+
     inline void ResetGraph() {
         graph_nodes_.clear();
-    }
-
-    inline void ResetMarkers() {
-        this->SetMarker(VizColor::GREEN, "graph_node", 0.5f, 0.5f, node_marker_);
-        this->SetMarker(VizColor::YELLOW, "graph_edge", 0.1f,  0.2f, edge_marker_);
-        node_marker_.points.clear();
-        edge_marker_.points.clear();
-        graph_marker_array_.markers.clear();
-    }
-
-    inline void CreateNavNode(const geometry_msgs::Point& point, 
-                              const std::size_t& id,
-                              NavNodePtr& node_ptr) 
-    {
-        node_ptr = std::make_shared<NavNode>();
-        node_ptr->position = point;
-        node_ptr->id = id;
-        node_ptr->connect_idxs.clear();
-        node_ptr->connect_nodes.clear();
     }
 
     inline bool AddNodePtrToGraph(const NavNodePtr& node_ptr) {

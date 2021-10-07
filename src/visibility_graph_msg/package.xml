@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>nav_graph_msg</name>
+  <name>visibility_graph_msg</name>
   <version>0.0.1</version>
-  <description>Navigation Graph Message</description>
+  <description>Visibility Graph Message</description>
   <maintainer email="fanyang2@alumni.cmu.edu">Fan Yang</maintainer>
   <license>BSD</license>
 

@@ -12,7 +12,8 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
-  nav_graph_msg
+  visibility_graph_msg
+  pcl_ros
 )
 
 ###################################
@@ -23,6 +24,7 @@ catkin_package(
   CATKIN_DEPENDS
   roscpp
   std_msgs
+  pcl_ros
 )
 
 ###########
@@ -33,6 +35,7 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
   "${PROJECT_SOURCE_DIR}/include"
   /usr/local/include # Location when using 'make system_install'
   /usr/include       # More usual location (e.g. when installing using a package)
@@ -50,13 +53,13 @@ set(SOURCES ${SOURCES}
 )
 
 ## Declare executables
-add_executable(graph_decoder ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES})
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(graph_decoder ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
-install(TARGETS graph_decoder
+install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

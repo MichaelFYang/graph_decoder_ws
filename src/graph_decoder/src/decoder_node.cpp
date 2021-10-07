@@ -19,44 +19,83 @@ void GraphDecoder::Init() {
     this->LoadParmas();
     save_graph_service_ = nh.advertiseService("/save_graph_service", &GraphDecoder::SaveGraphService, this);
     read_graph_service_ = nh.advertiseService("/read_graph_service", &GraphDecoder::ReadGraphFromFile, this);
-    node_marker_.type = Marker::SPHERE_LIST;
-    edge_marker_.type = Marker::LINE_LIST;
     this->ResetGraph();
 }
 
 
-void GraphDecoder::GraphCallBack(const nav_graph_msg::GraphConstPtr& msg) {
+void GraphDecoder::GraphCallBack(const visibility_graph_msg::GraphConstPtr& msg) {
     shared_graph_ = *msg;
     this->ResetGraph();
     NavNodePtr temp_node_ptr = NULL;
     std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
     for (std::size_t i=0; i<shared_graph_.nodes.size(); i++) {
         const auto node = shared_graph_.nodes[i];
-        CreateNavNode(node.position, node.id, temp_node_ptr);
-        for (const auto& cid : node.connect_nodes) {
-            temp_node_ptr->connect_idxs.push_back((std::size_t)cid);
-        }
+        CreateNavNode(node, temp_node_ptr);
         if (AddNodePtrToGraph(temp_node_ptr)) {
             nodeIdx_idx_map.insert({node.id, i});
         }
     }
-    for (const auto& node_ptr : graph_nodes_) { // add connections to nodes
-        std::vector<std::size_t> clean_idx;
-        clean_idx.clear();
-        for (const auto& cid : node_ptr->connect_idxs) {
-            const auto it = nodeIdx_idx_map.find(cid);
-            if (it != nodeIdx_idx_map.end()) {
-                const std::size_t idx = nodeIdx_idx_map.find(cid)->second;
-                const NavNodePtr cnode_ptr = graph_nodes_[idx];
-                node_ptr->connect_nodes.push_back(cnode_ptr);
-                clean_idx.push_back(cnode_ptr->id);
-            }
-        }
-        node_ptr->connect_idxs = clean_idx;
+    // add connections to nodes
+    for (const auto& node_ptr : graph_nodes_) { 
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->connect_idxs, node_ptr->connect_nodes);
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->contour_idxs, node_ptr->contour_connects);
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->traj_idxs, node_ptr->traj_connects);
     }
-    ROS_INFO("Graph extraction completed.");
+    ROS_INFO("Graph extraction completed. Total size of graph nodes: %ld", graph_nodes_.size());
     this->VisualizeGraph();
 }
+
+void GraphDecoder::AssignConnectNodes(const std::unordered_map<std::size_t, std::size_t>& idxs_map,
+                                      const NodePtrStack& graph,
+                                      std::vector<std::size_t>& node_idxs,
+                                      std::vector<NavNodePtr>& connects)
+{
+    std::vector<std::size_t> clean_idx;
+    connects.clear();
+    for (const auto& cid : node_idxs) {
+        const auto it = idxs_map.find(cid);
+        if (it != idxs_map.end()) {
+            const std::size_t idx = idxs_map.find(cid)->second;
+            const NavNodePtr cnode_ptr = graph[idx];
+            connects.push_back(cnode_ptr);
+            clean_idx.push_back(cnode_ptr->id);
+        }
+    }
+    node_idxs = clean_idx;
+}
+
+void GraphDecoder::CreateNavNode(const visibility_graph_msg::Node& msg,
+                                 NavNodePtr& node_ptr)
+{
+    node_ptr = std::make_shared<NavNode>();
+    node_ptr->position = Point3D(msg.position.x, msg.position.y, msg.position.z);
+    node_ptr->id = msg.id;
+    node_ptr->free_direct = static_cast<NodeFreeDirect>(msg.FreeType);
+    if (msg.surface_dirs.size() != 2) {
+        ROS_ERROR_THROTTLE(1.0, "node surface directions error.");
+        node_ptr->surf_dirs.first = node_ptr->surf_dirs.second = Point3D(0,0,-1);
+    } else {
+        node_ptr->surf_dirs.first  = Point3D(msg.surface_dirs[0].x,
+                                                msg.surface_dirs[0].y,0.0f);
+        node_ptr->surf_dirs.second = Point3D(msg.surface_dirs[1].x,
+                                                msg.surface_dirs[1].y,0.0f);
+    }
+    node_ptr->is_frontier = msg.is_frontier;
+    node_ptr->is_navpoint = msg.is_navpoint;
+    // assigan connection idxs
+    node_ptr->connect_idxs.clear(), node_ptr->contour_idxs.clear(), node_ptr->traj_idxs.clear();
+    for (const auto& cid : msg.connect_nodes) {
+        node_ptr->connect_idxs.push_back((std::size_t)cid);
+    }
+    for (const auto& cid : msg.contour_connects) {
+        node_ptr->contour_idxs.push_back((std::size_t)cid);
+    }
+    for (const auto& cid : msg.trajectory_connects) {
+        node_ptr->traj_idxs.push_back((std::size_t)cid);
+    }
+    node_ptr->connect_nodes.clear(), node_ptr->contour_connects.clear(), node_ptr->traj_connects.clear();
+}
+
 
 void GraphDecoder::LoadParmas() {
     const std::string prefix = "/graph_decoder/";
@@ -135,6 +174,57 @@ void GraphDecoder::Loop() {
     }
 }
 
+void GraphDecoder::CreateNavNode(std::string str, NavNodePtr& node_ptr) {
+    node_ptr = std::make_shared<NavNode>();
+    std::vector<std::string> components;
+    std::size_t pos = 0;
+    std::string delimiter = " ";
+    while ((pos = str.find(delimiter)) != std::string::npos) {
+        std::string c = str.substr(0, pos);
+        if (c.length() > 0) {
+            components.push_back(str.substr(0, pos));
+        }
+        str.erase(0, pos + delimiter.length());
+    }
+    bool is_connect, is_contour;
+    is_connect = is_contour = false;
+    node_ptr->connect_idxs.clear(), node_ptr->contour_idxs.clear(), node_ptr->traj_idxs.clear();
+    for (std::size_t i=0; i<components.size(); i++) {
+        if (i == 0) node_ptr->id = (std::size_t)std::stoi(components[i]);
+        if (i == 1) node_ptr->free_direct = static_cast<NodeFreeDirect>(std::stoi(components[i]));
+        // position
+        if (i == 2) node_ptr->position.x = std::stof(components[i]);
+        if (i == 3) node_ptr->position.y = std::stof(components[i]);
+        if (i == 4) node_ptr->position.z = std::stof(components[i]);
+        // surface direcion first
+        if (i == 5) node_ptr->surf_dirs.first.x = std::stof(components[i]);
+        if (i == 6) node_ptr->surf_dirs.first.y = std::stof(components[i]);
+        if (i == 7) node_ptr->surf_dirs.first.z = std::stof(components[i]);
+        // surface direction second
+        if (i == 8)  node_ptr->surf_dirs.second.x = std::stof(components[i]);
+        if (i == 9)  node_ptr->surf_dirs.second.y = std::stof(components[i]);
+        if (i == 10) node_ptr->surf_dirs.second.z = std::stof(components[i]);
+        // node internal infos
+        if (i == 11) node_ptr->is_frontier = std::stoi(components[i]) == 0 ? false : true;
+        if (i == 12) node_ptr->is_navpoint = std::stoi(components[i]) == 0 ? false : true;
+        if (i  > 12 && !is_connect) {
+            if (components[i] != "|") {
+                node_ptr->connect_idxs.push_back((std::size_t)std::stoi(components[i]));
+            } else {
+                is_connect = true;
+            }
+        } else if (i > 12 && is_connect && !is_contour) {
+            if (components[i] != "|") {
+                node_ptr->contour_idxs.push_back((std::size_t)std::stoi(components[i]));
+            } else {
+                is_contour = true;
+            }
+        } else if (i > 12 && is_connect && is_contour) {
+            node_ptr->connect_idxs.push_back((std::size_t)std::stoi(components[i]));
+        }
+    }
+}
+
 bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
     res.success = false;
     std::ifstream graph_file(gd_params_.file_name);
@@ -143,53 +233,22 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
     std::string delimiter = " ";
     std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
     std::size_t ic = 0;
+    NavNodePtr temp_node_ptr = NULL;
     while (std::getline(graph_file, str)) {
-        std::vector<std::string> components;
-        geometry_msgs::Point p;
-        std::size_t id;
-        std::size_t pos = 0;
-        std::vector<std::size_t> connect_idxs;
-        NavNodePtr temp_node_ptr = NULL;
-        while ((pos = str.find(delimiter)) != std::string::npos) {
-            std::string c = str.substr(0, pos);
-            if (c.length() > 0) {
-                components.push_back(str.substr(0, pos));
-            }
-            str.erase(0, pos + delimiter.length());
-        }
-        for (std::size_t i=0; i<components.size(); i++) {
-            if (i == 0) id = (std::size_t)std::stoi(components[i]);
-            if (i == 1) p.x = std::stof(components[i]);
-            if (i == 2) p.y = std::stof(components[i]);
-            if (i == 3) p.z = std::stof(components[i]);
-            if (i > 3) {
-                connect_idxs.push_back((std::size_t)std::stoi(components[i]));
-            }
-        }
-        CreateNavNode(p, id, temp_node_ptr);
-        temp_node_ptr->connect_idxs = connect_idxs;
+        CreateNavNode(str, temp_node_ptr);
         if (AddNodePtrToGraph(temp_node_ptr)) { 
-            nodeIdx_idx_map.insert({id, ic});
+            nodeIdx_idx_map.insert({temp_node_ptr->id, ic});
             ic ++;
         }
     }
     for (const auto& node_ptr : graph_nodes_) { // add connections to nodes
-        std::vector<std::size_t> clean_idx;
-        clean_idx.clear();
-        for (const auto& cid : node_ptr->connect_idxs) {
-            const auto it = nodeIdx_idx_map.find(cid);
-            if (it != nodeIdx_idx_map.end()) {
-                const std::size_t idx = nodeIdx_idx_map.find(cid)->second;
-                const NavNodePtr cnode_ptr = graph_nodes_[idx];
-                node_ptr->connect_nodes.push_back(cnode_ptr);
-                clean_idx.push_back(cnode_ptr->id);
-            }
-        }
-        node_ptr->connect_idxs = clean_idx;
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->connect_idxs, node_ptr->connect_nodes);
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->contour_idxs, node_ptr->contour_connects);
+        AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->traj_idxs, node_ptr->traj_connects);
     }
     ROS_INFO("Graph extraction completed.");
     this->VisualizeGraph();
-    res.message = "Read graph file success.";
+    res.message = "Read graph file success. Extract graph size: " + std::to_string(graph_nodes_.size());
     res.success = true;
     return true;
 }
@@ -199,14 +258,31 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
     std::ofstream graph_file;
     res.success = false;
     graph_file.open(gd_params_.file_name);
+    // Lambda function
+    auto OutputPoint3D = [&](const Point3D& p) {
+        graph_file << std::to_string(p.x) << " ";
+        graph_file << std::to_string(p.y) << " ";
+        graph_file << std::to_string(p.z) << " ";
+    };
     for (const auto& node_ptr : graph_nodes_) {
         graph_file << std::to_string(node_ptr->id) << " ";
-        graph_file << std::to_string(node_ptr->position.x) << " ";
-        graph_file << std::to_string(node_ptr->position.y) << " ";
-        graph_file << std::to_string(node_ptr->position.z) << " ";
+        graph_file << std::to_string(static_cast<int>(node_ptr->free_direct)) << " ";
+        OutputPoint3D(node_ptr->position);
+        OutputPoint3D(node_ptr->surf_dirs.first);
+        OutputPoint3D(node_ptr->surf_dirs.second);
+        graph_file << std::to_string(static_cast<int>(node_ptr->is_frontier)) << " ";
+        graph_file << std::to_string(static_cast<int>(node_ptr->is_navpoint)) << " ";
         for (const auto& cidx : node_ptr->connect_idxs) {
             graph_file << std::to_string(cidx) << " ";
         } 
+        graph_file << "|" << " ";
+        for (const auto& cidx : node_ptr->contour_idxs) {
+            graph_file << std::to_string(cidx) << " ";
+        }
+        graph_file << "|" << " ";
+        for (const auto& cidx : node_ptr->traj_idxs) {
+            graph_file << std::to_string(cidx) << " ";
+        }
         graph_file << "\n";
     }
     graph_file.close();
@@ -217,17 +293,103 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
 }
 
 void GraphDecoder::VisualizeGraph() {
-    this->ResetMarkers();
-    for (const auto& node_ptr : graph_nodes_) {
-        node_marker_.points.push_back(node_ptr->position);
-        for (const auto& cnode_ptr : node_ptr->connect_nodes) {
-            edge_marker_.points.push_back(node_ptr->position);
-            edge_marker_.points.push_back(cnode_ptr->position);
+    MarkerArray graph_marker_array;
+    Marker nav_node_marker, covered_node_marker, internav_node_marker, edge_marker, contour_edge_marker, free_edge_marker, trajectory_edge_marker,
+           corner_surf_marker, corner_helper_marker;
+    nav_node_marker.type       = Marker::SPHERE_LIST;
+    covered_node_marker.type   = Marker::SPHERE_LIST;
+    internav_node_marker.type  = Marker::SPHERE_LIST;
+    edge_marker.type           = Marker::LINE_LIST;
+    free_edge_marker.type      = Marker::LINE_LIST;
+    contour_edge_marker.type   = Marker::LINE_LIST;
+    trajectory_edge_marker.type = Marker::LINE_LIST;
+    corner_surf_marker.type    = Marker::LINE_LIST;
+    corner_helper_marker.type  = Marker::CUBE_LIST;
+    this->SetMarker(VizColor::WHITE,   "global_vertex",     0.5f,  0.5f,  nav_node_marker);
+    this->SetMarker(VizColor::BLUE,    "freespace_vertex",  0.5f,  0.8f,  covered_node_marker);
+    this->SetMarker(VizColor::YELLOW,  "trajectory_vertex", 0.5f,  0.8f,  internav_node_marker);
+    this->SetMarker(VizColor::EMERALD, "global_vgraph",     0.1f,  0.2f,  edge_marker);
+    this->SetMarker(VizColor::EMERALD, "freespace_vgraph",  0.1f,  0.2f,  free_edge_marker);
+    this->SetMarker(VizColor::RED,     "polygon_edge",      0.15f, 0.2f,  contour_edge_marker);
+    this->SetMarker(VizColor::GREEN,   "trajectory_edge",   0.1f,  0.5f,  trajectory_edge_marker);
+    this->SetMarker(VizColor::YELLOW,  "vertex_angle",      0.15f, 0.75f, corner_surf_marker);
+    this->SetMarker(VizColor::YELLOW,  "angle_direct",      0.25f, 0.75f, corner_helper_marker);
+    /* Lambda Function */
+    auto Draw_Edge = [&](const NavNodePtr& node_ptr) {
+        geometry_msgs::Point p1, p2;
+        p1 = ToGeoMsgP(node_ptr->position);
+        for (const auto& cnode : node_ptr->connect_nodes) {
+            if (IsTypeInStack(cnode, node_ptr->contour_connects)) continue;
+            p2 = ToGeoMsgP(cnode->position);
+            edge_marker.points.push_back(p1);
+            edge_marker.points.push_back(p2);
+            if (!node_ptr->is_frontier && !cnode->is_frontier) {
+                free_edge_marker.points.push_back(p1);
+                free_edge_marker.points.push_back(p2);
+            }
         }
-    }
-    graph_marker_array_.markers.push_back(edge_marker_);
-    graph_marker_array_.markers.push_back(node_marker_);
-    graph_viz_pub_.publish(graph_marker_array_);
+        // contour edges
+        for (const auto& ct_cnode : node_ptr->contour_connects) {
+            p2 = ToGeoMsgP(ct_cnode->position);
+            contour_edge_marker.points.push_back(p1);
+            contour_edge_marker.points.push_back(p2);
+        }
+        // inter navigation trajectory connections
+        if (node_ptr->is_navpoint) {
+            for (const auto& tj_cnode : node_ptr->traj_connects) {
+                p2 = ToGeoMsgP(tj_cnode->position);
+                trajectory_edge_marker.points.push_back(p1);
+                trajectory_edge_marker.points.push_back(p2);
+            }
+        }
+    };
+    auto Draw_Surf_Dir = [&](const NavNodePtr& node_ptr) {
+        geometry_msgs::Point p1, p2, p3;
+        p1 = ToGeoMsgP(node_ptr->position);
+        Point3D end_p;
+        if (node_ptr->free_direct != NodeFreeDirect::PILLAR) {
+            end_p = node_ptr->position + node_ptr->surf_dirs.first * gd_params_.viz_scale_ratio;
+            p2 = ToGeoMsgP(end_p);
+            corner_surf_marker.points.push_back(p1);
+            corner_surf_marker.points.push_back(p2);
+            corner_helper_marker.points.push_back(p2);
+            end_p = node_ptr->position + node_ptr->surf_dirs.second * gd_params_.viz_scale_ratio;
+            p3 = ToGeoMsgP(end_p);
+            corner_surf_marker.points.push_back(p1);
+            corner_surf_marker.points.push_back(p3);
+            corner_helper_marker.points.push_back(p3);
+        }
+    };
+    std::size_t idx = 0;
+    const std::size_t graph_size = graph_nodes_.size();
+    nav_node_marker.points.resize(graph_size);
+    for (const auto& nav_node_ptr : graph_nodes_) {
+        if (nav_node_ptr == NULL) {
+            continue;
+        }
+        const geometry_msgs::Point cpoint = ToGeoMsgP(nav_node_ptr->position);
+        nav_node_marker.points[idx] = cpoint;
+        if (nav_node_ptr->is_navpoint) {
+            internav_node_marker.points.push_back(cpoint);
+        }
+        if (!nav_node_ptr->is_frontier) {
+            covered_node_marker.points.push_back(cpoint);
+        }
+        Draw_Edge(nav_node_ptr);
+        Draw_Surf_Dir(nav_node_ptr);
+        idx ++;    
+    } 
+    nav_node_marker.points.resize(idx);
+    graph_marker_array.markers.push_back(nav_node_marker);
+    graph_marker_array.markers.push_back(covered_node_marker);
+    graph_marker_array.markers.push_back(internav_node_marker);
+    graph_marker_array.markers.push_back(edge_marker);
+    graph_marker_array.markers.push_back(free_edge_marker);
+    graph_marker_array.markers.push_back(contour_edge_marker);
+    graph_marker_array.markers.push_back(trajectory_edge_marker);
+    graph_marker_array.markers.push_back(corner_surf_marker);
+    graph_marker_array.markers.push_back(corner_helper_marker);
+    graph_viz_pub_.publish(graph_marker_array);
 }
 
 int main(int argc, char** argv){
