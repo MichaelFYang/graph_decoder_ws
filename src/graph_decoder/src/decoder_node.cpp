@@ -24,12 +24,13 @@ void GraphDecoder::Init() {
 
 
 void GraphDecoder::GraphCallBack(const visibility_graph_msg::GraphConstPtr& msg) {
-    shared_graph_ = *msg;
+    const visibility_graph_msg::Graph shared_graph = *msg;
     this->ResetGraph();
     NavNodePtr temp_node_ptr = NULL;
+    robot_id_ = msg->robot_id;
     std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
-    for (std::size_t i=0; i<shared_graph_.nodes.size(); i++) {
-        const auto node = shared_graph_.nodes[i];
+    for (std::size_t i=0; i<shared_graph.nodes.size(); i++) {
+        const auto node = shared_graph.nodes[i];
         CreateNavNode(node, temp_node_ptr);
         if (AddNodePtrToGraph(temp_node_ptr)) {
             nodeIdx_idx_map.insert({node.id, i});
@@ -99,7 +100,7 @@ void GraphDecoder::CreateNavNode(const visibility_graph_msg::Node& msg,
 
 void GraphDecoder::LoadParmas() {
     const std::string prefix = "/graph_decoder/";
-    nh.param<std::string>(prefix + "world_frame", gd_params_.frame_id, "/map");
+    nh.param<std::string>(prefix + "world_frame", gd_params_.frame_id, "map");
     nh.param<std::string>(prefix + "file_name", gd_params_.file_name, "/home/fan-robot/graph_decoder_files/graph.txt");
     nh.param<float>(prefix + "visual_scale_ratio", gd_params_.viz_scale_ratio, 1.0);
 
@@ -230,7 +231,6 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
     std::ifstream graph_file(gd_params_.file_name);
     this->ResetGraph();
     std::string str;
-    std::string delimiter = " ";
     std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
     std::size_t ic = 0;
     NavNodePtr temp_node_ptr = NULL;
@@ -246,7 +246,6 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
         AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->contour_idxs, node_ptr->contour_connects);
         AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->traj_idxs, node_ptr->traj_connects);
     }
-    ROS_INFO("Graph extraction completed.");
     this->VisualizeGraph();
     res.message = "Read graph file success. Extract graph size: " + std::to_string(graph_nodes_.size());
     res.success = true;
@@ -254,7 +253,6 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
 }
 
 bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
-    /* Output Format: "idx x y z [connect idxs]" */
     std::ofstream graph_file;
     res.success = false;
     graph_file.open(gd_params_.file_name);
@@ -286,9 +284,8 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
         graph_file << "\n";
     }
     graph_file.close();
-    ROS_INFO("Save graph file success.");
     res.success = true;
-    res.message = "Save graph file success in file: " + gd_params_.file_name;
+    res.message = "Graph saved in file; Total graph size: " + std::to_string(graph_nodes_.size());
     return true;
 }
 

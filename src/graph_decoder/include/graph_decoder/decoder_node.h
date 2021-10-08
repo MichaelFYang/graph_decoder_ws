@@ -85,8 +85,7 @@ private:
     GraphDecoderParams gd_params_;
     NodePtrStack graph_nodes_;
     MarkerArray graph_marker_array_;
-
-    visibility_graph_msg::Graph shared_graph_;
+    std::size_t robot_id_;
 
     void LoadParmas();
 
