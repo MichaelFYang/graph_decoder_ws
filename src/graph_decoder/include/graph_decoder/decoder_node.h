@@ -80,8 +80,8 @@ public:
 private:
     ros::NodeHandle nh;
     ros::Subscriber graph_sub_;
-    ros::Publisher graph_viz_pub_;
-    ros::ServiceServer save_graph_service_, read_graph_service_;
+    ros::Publisher  graph_pub_, graph_viz_pub_;
+    ros::ServiceServer save_graph_service_, read_graph_service_, pub_graph_service_;
     GraphDecoderParams gd_params_;
     NodePtrStack graph_nodes_;
     MarkerArray graph_marker_array_;
@@ -89,20 +89,23 @@ private:
 
     void LoadParmas();
 
-
     void SetMarker(const VizColor& color, 
-                const std::string& ns,
-                const float scale,
-                const float alpha, 
-                Marker& scan_marker);
+                   const std::string& ns,
+                   const float scale,
+                   const float alpha, 
+                   Marker& scan_marker);
     
     void SetColor(const VizColor& color, const float alpha, Marker& scan_marker);
 
     void GraphCallBack(const visibility_graph_msg::GraphConstPtr& msg);
 
+    void EncodeGraph(const NodePtrStack& graphIn, visibility_graph_msg::Graph& graphOut);
+
     bool SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
     bool ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
+
+    bool PubGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res); 
 
     void VisualizeGraph();
 

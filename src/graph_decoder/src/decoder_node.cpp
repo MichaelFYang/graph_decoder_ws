@@ -13,12 +13,15 @@
 
 void GraphDecoder::Init() {
     /* initialize subscriber and publisher */
-    graph_sub_= nh.subscribe("/planner_nav_graph", 5, &GraphDecoder::GraphCallBack, this);
+    graph_sub_     = nh.subscribe("/planner_nav_graph", 5, &GraphDecoder::GraphCallBack, this);
     graph_viz_pub_ = nh.advertise<MarkerArray>("/graph_decoder_viz",5);
+    graph_pub_     = nh.advertise<visibility_graph_msg::Graph>("decoded_graph", 5);
 
     this->LoadParmas();
     save_graph_service_ = nh.advertiseService("/save_graph_service", &GraphDecoder::SaveGraphService, this);
     read_graph_service_ = nh.advertiseService("/read_graph_service", &GraphDecoder::ReadGraphFromFile, this);
+    pub_graph_service_  = nh.advertiseService("/pub_graph_service",  &GraphDecoder::PubGraphService, this);
+    robot_id_ = 0;
     this->ResetGraph();
 }
 
@@ -226,6 +229,38 @@ void GraphDecoder::CreateNavNode(std::string str, NavNodePtr& node_ptr) {
     }
 }
 
+void GraphDecoder::EncodeGraph(const NodePtrStack& graphIn, visibility_graph_msg::Graph& graphOut) {
+    graphOut.nodes.clear();
+    const std::string frame_id = graphOut.header.frame_id;
+    for (const auto& node_ptr : graphIn) {
+        visibility_graph_msg::Node msg_node;
+        msg_node.header.frame_id = frame_id;
+        msg_node.position    = ToGeoMsgP(node_ptr->position);
+        msg_node.id          = node_ptr->id;
+        msg_node.FreeType    = static_cast<int>(node_ptr->free_direct);
+        msg_node.is_frontier = node_ptr->is_frontier;
+        msg_node.is_navpoint = node_ptr->is_navpoint;
+        msg_node.surface_dirs.clear();
+        msg_node.surface_dirs.push_back(ToGeoMsgP(node_ptr->surf_dirs.first));
+        msg_node.surface_dirs.push_back(ToGeoMsgP(node_ptr->surf_dirs.second));
+        // Encode connections
+        msg_node.connect_nodes.clear();
+        for (const auto& cid : node_ptr->connect_idxs) {
+            msg_node.connect_nodes.push_back(cid);
+        }
+        msg_node.contour_connects.clear();
+        for (const auto& cid : node_ptr->contour_idxs) {
+            msg_node.contour_connects.push_back(cid);
+        }
+        msg_node.trajectory_connects.clear();
+        for (const auto& cid : node_ptr->traj_idxs) {
+            msg_node.trajectory_connects.push_back(cid);
+        }
+        graphOut.nodes.push_back(msg_node);
+    }
+    graphOut.size = graphOut.nodes.size();
+}
+
 bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
     res.success = false;
     std::ifstream graph_file(gd_params_.file_name);
@@ -286,6 +321,19 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
     graph_file.close();
     res.success = true;
     res.message = "Graph saved in file; Total graph size: " + std::to_string(graph_nodes_.size());
+    return true;
+}
+
+bool GraphDecoder::PubGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
+    res.success = false;
+    visibility_graph_msg::Graph graph_msg;
+    graph_msg.header.frame_id = gd_params_.frame_id;
+    graph_msg.header.stamp = ros::Time::now();
+    graph_msg.robot_id = robot_id_;
+    EncodeGraph(graph_nodes_, graph_msg);
+    graph_pub_.publish(graph_msg);
+    res.message = "Decoded graph published; Total graph size: " + std::to_string(graph_msg.size);
+    res.success = true;
     return true;
 }
 
