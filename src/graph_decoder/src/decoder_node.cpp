@@ -13,14 +13,14 @@
 
 void GraphDecoder::Init() {
     /* initialize subscriber and publisher */
-    graph_sub_     = nh.subscribe("/planner_nav_graph", 5, &GraphDecoder::GraphCallBack, this);
+    graph_sub_     = nh.subscribe("/robot_vgraph", 5, &GraphDecoder::GraphCallBack, this);
+    graph_pub_     = nh.advertise<visibility_graph_msg::Graph>("decoded_vgraph", 5);
     graph_viz_pub_ = nh.advertise<MarkerArray>("/graph_decoder_viz",5);
-    graph_pub_     = nh.advertise<visibility_graph_msg::Graph>("decoded_graph", 5);
 
     this->LoadParmas();
-    save_graph_service_ = nh.advertiseService("/save_graph_service", &GraphDecoder::SaveGraphService, this);
-    read_graph_service_ = nh.advertiseService("/read_graph_service", &GraphDecoder::ReadGraphFromFile, this);
-    pub_graph_service_  = nh.advertiseService("/pub_graph_service",  &GraphDecoder::PubGraphService, this);
+    save_graph_service_     = nh.advertiseService("/save_graph_service", &GraphDecoder::SaveGraphService, this);
+    read_graph_service_     = nh.advertiseService("/read_graph_service", &GraphDecoder::ReadGraphFromFile, this);
+    request_graph_service_  = nh.advertiseService("/request_graph_service",  &GraphDecoder::RequestGraphService, this);
     robot_id_ = 0;
     this->ResetGraph();
 }
@@ -324,7 +324,7 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
     return true;
 }
 
-bool GraphDecoder::PubGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
+bool GraphDecoder::RequestGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
     res.success = false;
     visibility_graph_msg::Graph graph_msg;
     graph_msg.header.frame_id = gd_params_.frame_id;

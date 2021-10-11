@@ -81,7 +81,7 @@ private:
     ros::NodeHandle nh;
     ros::Subscriber graph_sub_;
     ros::Publisher  graph_pub_, graph_viz_pub_;
-    ros::ServiceServer save_graph_service_, read_graph_service_, pub_graph_service_;
+    ros::ServiceServer save_graph_service_, read_graph_service_, request_graph_service_;
     GraphDecoderParams gd_params_;
     NodePtrStack graph_nodes_;
     MarkerArray graph_marker_array_;
@@ -105,7 +105,7 @@ private:
 
     bool ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
-    bool PubGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res); 
+    bool RequestGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res); 
 
     void VisualizeGraph();
 
