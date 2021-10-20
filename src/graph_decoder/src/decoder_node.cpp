@@ -18,8 +18,8 @@ void GraphDecoder::Init() {
     graph_viz_pub_ = nh.advertise<MarkerArray>("/graph_decoder_viz",5);
 
     this->LoadParmas();
-    save_graph_service_     = nh.advertiseService("/save_graph_service", &GraphDecoder::SaveGraphService, this);
-    read_graph_service_     = nh.advertiseService("/read_graph_service", &GraphDecoder::ReadGraphFromFile, this);
+    save_graph_sub_ = nh.subscribe("/save_file_dir", 5, &GraphDecoder::SaveGraphCallBack, this);
+    read_graph_sub_ = nh.subscribe("/read_file_dir", 5, &GraphDecoder::ReadGraphCallBack, this);
     request_graph_service_  = nh.advertiseService("/request_graph_service",  &GraphDecoder::RequestGraphService, this);
     robot_id_ = 0;
     this->ResetGraph();
@@ -104,7 +104,6 @@ void GraphDecoder::CreateNavNode(const visibility_graph_msg::Node& msg,
 void GraphDecoder::LoadParmas() {
     const std::string prefix = "/graph_decoder/";
     nh.param<std::string>(prefix + "world_frame", gd_params_.frame_id, "map");
-    nh.param<std::string>(prefix + "file_name", gd_params_.file_name, "/home/fan-robot/graph_decoder_files/graph.txt");
     nh.param<float>(prefix + "visual_scale_ratio", gd_params_.viz_scale_ratio, 1.0);
 
 }
@@ -261,9 +260,9 @@ void GraphDecoder::EncodeGraph(const NodePtrStack& graphIn, visibility_graph_msg
     graphOut.size = graphOut.nodes.size();
 }
 
-bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
-    res.success = false;
-    std::ifstream graph_file(gd_params_.file_name);
+void GraphDecoder::ReadGraphCallBack(const std_msgs::StringConstPtr& msg) {
+    const std::string file_path = msg->data;
+    std::ifstream graph_file(file_path);
     this->ResetGraph();
     std::string str;
     std::unordered_map<std::size_t, std::size_t> nodeIdx_idx_map;
@@ -282,15 +281,15 @@ bool GraphDecoder::ReadGraphFromFile(std_srvs::Trigger::Request& req, std_srvs::
         AssignConnectNodes(nodeIdx_idx_map, graph_nodes_, node_ptr->traj_idxs, node_ptr->traj_connects);
     }
     this->VisualizeGraph();
-    res.message = "Read graph file success. Extract graph size: " + std::to_string(graph_nodes_.size());
-    res.success = true;
-    return true;
+    visibility_graph_msg::Graph graph_msg;
+    ConvertGraphToMsg(graph_nodes_, graph_msg);
+    graph_pub_.publish(graph_msg);
 }
 
-bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
+void GraphDecoder::SaveGraphCallBack(const std_msgs::StringConstPtr& msg) {
+    const std::string file_path = msg->data;
     std::ofstream graph_file;
-    res.success = false;
-    graph_file.open(gd_params_.file_name);
+    graph_file.open(file_path);
     // Lambda function
     auto OutputPoint3D = [&](const Point3D& p) {
         graph_file << std::to_string(p.x) << " ";
@@ -319,18 +318,12 @@ bool GraphDecoder::SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::T
         graph_file << "\n";
     }
     graph_file.close();
-    res.success = true;
-    res.message = "Graph saved in file; Total graph size: " + std::to_string(graph_nodes_.size());
-    return true;
 }
 
 bool GraphDecoder::RequestGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
     res.success = false;
     visibility_graph_msg::Graph graph_msg;
-    graph_msg.header.frame_id = gd_params_.frame_id;
-    graph_msg.header.stamp = ros::Time::now();
-    graph_msg.robot_id = robot_id_;
-    EncodeGraph(graph_nodes_, graph_msg);
+    ConvertGraphToMsg(graph_nodes_, graph_msg);
     graph_pub_.publish(graph_msg);
     res.message = "Decoded graph published; Total graph size: " + std::to_string(graph_msg.size);
     res.success = true;

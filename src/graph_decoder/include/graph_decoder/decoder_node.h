@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <unordered_map>
+#include <std_msgs/String.h>
 #include <visibility_graph_msg/Graph.h>
 #include <visibility_graph_msg/Node.h>
 #include <std_srvs/Trigger.h>
@@ -65,7 +66,8 @@ typedef std::vector<NavNodePtr> NodePtrStack;
 struct GraphDecoderParams {
     GraphDecoderParams() = default;
     std::string frame_id;
-    std::string file_name;
+    std::string save_path;
+    std::string read_path;
     float viz_scale_ratio;
 };
 
@@ -80,8 +82,10 @@ public:
 private:
     ros::NodeHandle nh;
     ros::Subscriber graph_sub_;
+    ros::Subscriber save_graph_sub_, read_graph_sub_;
     ros::Publisher  graph_pub_, graph_viz_pub_;
-    ros::ServiceServer save_graph_service_, read_graph_service_, request_graph_service_;
+
+    ros::ServiceServer request_graph_service_;
     GraphDecoderParams gd_params_;
     NodePtrStack graph_nodes_;
     MarkerArray graph_marker_array_;
@@ -100,6 +104,10 @@ private:
     void GraphCallBack(const visibility_graph_msg::GraphConstPtr& msg);
 
     void EncodeGraph(const NodePtrStack& graphIn, visibility_graph_msg::Graph& graphOut);
+
+    void SaveGraphCallBack(const std_msgs::StringConstPtr& msg);
+
+    void ReadGraphCallBack(const std_msgs::StringConstPtr& msg);
 
     bool SaveGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
@@ -137,6 +145,13 @@ private:
 
     inline void ResetGraph() {
         graph_nodes_.clear();
+    }
+
+    inline void ConvertGraphToMsg(const NodePtrStack& graph, visibility_graph_msg::Graph& graph_msg) {
+        graph_msg.header.frame_id = gd_params_.frame_id;
+        graph_msg.header.stamp = ros::Time::now();
+        graph_msg.robot_id = robot_id_;
+        EncodeGraph(graph, graph_msg);
     }
 
     inline bool AddNodePtrToGraph(const NavNodePtr& node_ptr) {
