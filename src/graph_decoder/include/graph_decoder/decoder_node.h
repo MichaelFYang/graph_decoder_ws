@@ -50,6 +50,7 @@ struct NavNode {
     PointPair surf_dirs;
     bool is_frontier;
     bool is_navpoint;
+    bool is_boundary;
     std::vector<std::size_t> connect_idxs;
     std::vector<std::shared_ptr<NavNode>> connect_nodes;
 
@@ -66,8 +67,6 @@ typedef std::vector<NavNodePtr> NodePtrStack;
 struct GraphDecoderParams {
     GraphDecoderParams() = default;
     std::string frame_id;
-    std::string save_path;
-    std::string read_path;
     float viz_scale_ratio;
 };
 
@@ -87,7 +86,7 @@ private:
 
     ros::ServiceServer request_graph_service_;
     GraphDecoderParams gd_params_;
-    NodePtrStack graph_nodes_;
+    NodePtrStack received_graph_;
     MarkerArray graph_marker_array_;
     std::size_t robot_id_;
 
@@ -115,7 +114,7 @@ private:
 
     bool RequestGraphService(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res); 
 
-    void VisualizeGraph();
+    void VisualizeGraph(const NodePtrStack& graphIn);
 
     void CreateNavNode(std::string str, NavNodePtr& node_ptr);
 
@@ -143,8 +142,8 @@ private:
         return false;
     }
 
-    inline void ResetGraph() {
-        graph_nodes_.clear();
+    inline void ResetGraph(NodePtrStack& graphOut) {
+        graphOut.clear();
     }
 
     inline void ConvertGraphToMsg(const NodePtrStack& graph, visibility_graph_msg::Graph& graph_msg) {
@@ -154,9 +153,9 @@ private:
         EncodeGraph(graph, graph_msg);
     }
 
-    inline bool AddNodePtrToGraph(const NavNodePtr& node_ptr) {
+    inline bool AddNodePtrToGraph(const NavNodePtr& node_ptr, NodePtrStack& graphOut) {
         if (node_ptr != NULL) {
-            graph_nodes_.push_back(node_ptr);
+            graphOut.push_back(node_ptr);
             return true;
         }
         return false;

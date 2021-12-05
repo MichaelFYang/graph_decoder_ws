@@ -16,7 +16,7 @@ catkin build
 source devel/setup.bash
 ```
 
-#### Before launch the decoder, make sure you have the file path correct
+#### Before launch the decoder, make sure you check the the configuration file
 Open the config file as the way you like
 ``` bash
 gedit <<YOUR WORKSPACE>>/src/graph_decoder/config/default.yaml 
@@ -27,23 +27,17 @@ gedit <<YOUR WORKSPACE>>/src/graph_decoder/config/default.yaml
 roslaunch graph_decoder decoder.launch
 ```
 
-#### Instruction of how this graph decoder works
-##### There are two ways to input (update) graph into the decoder
-1. Publish your graph into ROS topic "/planner_nav_graph"
-2. Read graph file from path listed in config file in nav_graph_decoder package by calling ROS service
+## Instruction of how this graph decoder works
+#### There are two ways to input (update) graph into the decoder
+1. Publish your graph into ROS topic "/robot_vgraph"
+2. Read graph file from path published into ROS topic "/read_file_dir"
+3. Save graph file from path published into ROS topic "/save_file_dir"
 
-Note: You need to select the graph file and change file path in "graph_decoder_ws/src/nav_graph_decoder/config/default.yaml"
-```bash
-rosservice call /read_graph_service "{}"
-```
-##### How to save graph into a graph file
-Call a ROS service to save your current graph into a file
-```bash
-rosservice call /save_graph_service "{}"
-```
-
-#### Graph File Format
+#### General Graph File Format
 idx position.x position.y position.z \[connection idxs\]
+
+## Integration with FAR Planner (Multi-robots Graph Sharing and Merging)
+This package could read graphs from either files or published by other robots. It decodes the graphs and re-publishes to FAR Planner. FAR Planner has its own decoder that subscribes to the graph message and merges the graph from other sources with its current graph automatically.  
 
 ## Who could I talk to? 
 
